@@ -1,0 +1,17 @@
+{
+  "name": "management-system",
+  "version": "1.0.0",
+  "description": "Management System Project",
+  "scripts": {
+    "start": "echo \"No start script defined\"",
+    "client": "npm run dev --prefix client",
+    "server": "npm run dev --prefix server",
+    "dev": "concurrently \"npm run server\" \"npm run client\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

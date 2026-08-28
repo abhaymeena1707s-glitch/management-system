@@ -42,12 +42,12 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('user', JSON.stringify(userData));
         setUser(userData);
         toast.success(`Welcome back, ${userData.name}!`);
-        return true;
+        return { success: true, user: userData };
       }
     } catch (err) {
       const msg = err.response?.data?.message || 'Login failed. Please check credentials.';
       toast.error(msg);
-      return false;
+      return { success: false };
     }
   };
 
@@ -74,12 +74,12 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('user', JSON.stringify(userData));
         setUser(userData);
         toast.success(`Welcome back, ${userData.name}!`);
-        return true;
+        return { success: true, user: userData };
       }
     } catch (err) {
       const msg = err.response?.data?.message || 'OTP verification failed. Please try again.';
       toast.error(msg);
-      return false;
+      return { success: false };
     }
   };
 

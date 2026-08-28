@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Toaster } from 'react-hot-toast';
 
 import { MainLayout } from './components/layout/MainLayout';
+import { InventoryLayout } from './components/layout/InventoryLayout';
 import { Login } from './pages/auth/Login';
 import { Register } from './pages/auth/Register';
 import { ForgotPassword } from './pages/auth/ForgotPassword';
@@ -21,6 +22,12 @@ import { Authors } from './pages/Authors';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 import { HelpSupport } from './pages/HelpSupport';
+
+import { Items } from './pages/inventory/Items';
+import { Billing } from './pages/inventory/Billing';
+import { InventoryDashboard } from './pages/inventory/InventoryDashboard';
+import { AddItem } from './pages/inventory/AddItem';
+import { SearchItem } from './pages/inventory/SearchItem';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -69,6 +76,22 @@ export default function App() {
           <Route path="reports" element={<Reports />} />
           <Route path="settings" element={<Settings />} />
           <Route path="help" element={<HelpSupport />} />
+        </Route>
+
+        <Route
+          path="/inventory"
+          element={
+            <ProtectedRoute>
+              <InventoryLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="items" element={<Items />} />
+          <Route path="billing" element={<Billing />} />
+          <Route path="add-item" element={<AddItem />} />
+          <Route path="search" element={<SearchItem />} />
+          <Route path="reports" element={<InventoryDashboard />} />
+          <Route path="dashboard" element={<InventoryDashboard />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
