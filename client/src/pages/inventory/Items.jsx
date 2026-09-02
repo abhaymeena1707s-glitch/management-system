@@ -64,7 +64,7 @@ const Items = () => {
           <p className="mt-1 text-sm text-gray-500">Manage all your items</p>
         </div>
         <button
-          onClick={() => navigate('/items/add')}
+          onClick={() => navigate('/inventory/add-item')}
           className="flex items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
         >
           <Plus size={20} />
@@ -83,7 +83,7 @@ const Items = () => {
             type="text"
             className="block w-full rounded-md border border-gray-300 pl-10 pr-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             placeholder="Search by name, category or code..."
-            onClick={() => navigate('/items/search')}
+            onClick={() => navigate('/inventory/search')}
           />
         </div>
       </div>

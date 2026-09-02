@@ -108,11 +108,25 @@ const Billing = () => {
   const handlePrint = () => {
     if (printRef.current) {
       const printContents = printRef.current.innerHTML;
-      const originalContents = document.body.innerHTML;
-      document.body.innerHTML = printContents;
-      window.print();
-      document.body.innerHTML = originalContents;
-      window.location.reload(); // Quick way to restore React state after messing with DOM
+      const rootEl = document.getElementById('root');
+      
+      const printContainer = document.createElement('div');
+      printContainer.innerHTML = printContents;
+      printContainer.id = 'temp-print-container';
+      
+      if (rootEl) {
+        // Hide the main React app
+        rootEl.style.display = 'none';
+        // Append the print container to body
+        document.body.appendChild(printContainer);
+        
+        // Print
+        window.print();
+        
+        // Cleanup and restore React app
+        document.body.removeChild(printContainer);
+        rootEl.style.display = '';
+      }
     }
   };
 
