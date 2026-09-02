@@ -1,271 +1,312 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Plus, Trash2, Package } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useState, useRef } from 'react';
+import { Search, Plus, Trash2, Printer, Save, Loader2 } from 'lucide-react';
+import api from '../../api/axios';
+import { formatCurrency } from '../../utils/formatCurrency';
+import PrintableInvoice from '../../components/inventory/PrintableInvoice';
 
-export const Billing = () => {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+const Billing = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
   
-  // Cart state
-  const [cart, setCart] = useState([]);
-  const [discount, setDiscount] = useState(0);
+  const [billItems, setBillItems] = useState([]);
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedBill, setSavedBill] = useState(null);
+  
+  const printRef = useRef(null);
 
-  const fetchItems = async () => {
-    try {
-      const response = await fetch('/api/inventory/items', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      const data = await response.json();
-      if (data.success) {
-        setItems(data.data);
+  const taxRate = 0.18; // 18% GST
+
+  const handleSearch = async (e) => {
+    const term = e.target.value;
+    setSearchTerm(term);
+    
+    if (term.length > 1) {
+      setIsSearching(true);
+      try {
+        const { data } = await api.get(`/items/search?q=${term}`);
+        setSearchResults(data);
+      } catch (error) {
+        console.error('Failed to search items', error);
+      } finally {
+        setIsSearching(false);
       }
-    } catch (error) {
-      toast.error('Failed to fetch items');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchItems();
-  }, []);
-
-  const addToCart = (item) => {
-    const existing = cart.find(c => c._id === item._id);
-    if (existing) {
-      if (existing.cartQty >= item.quantity) {
-        toast.error('Not enough stock available');
-        return;
-      }
-      setCart(cart.map(c => c._id === item._id ? { ...c, cartQty: c.cartQty + 1 } : c));
     } else {
-      if (item.quantity <= 0) {
-        toast.error('Out of stock');
-        return;
-      }
-      setCart([...cart, { ...item, cartQty: 1 }]);
+      setSearchResults([]);
     }
   };
 
-  const removeFromCart = (itemId) => {
-    setCart(cart.filter(c => c._id !== itemId));
+  const addItemToBill = (item) => {
+    const existingItem = billItems.find((i) => i._id === item._id);
+    if (existingItem) {
+      setBillItems(
+        billItems.map((i) =>
+          i._id === item._id ? { ...i, quantity: i.quantity + 1 } : i
+        )
+      );
+    } else {
+      setBillItems([...billItems, { ...item, quantity: 1 }]);
+    }
+    setSearchTerm('');
+    setSearchResults([]);
   };
 
-  const updateCartQty = (itemId, qty) => {
-    const newQty = parseInt(qty) || 1;
-    const item = items.find(i => i._id === itemId);
-    if (item && newQty > item.quantity) {
-      toast.error('Not enough stock available');
-      return;
-    }
-    setCart(cart.map(c => c._id === itemId ? { ...c, cartQty: newQty } : c));
+  const updateQuantity = (id, newQuantity) => {
+    if (newQuantity < 1) return;
+    setBillItems(
+      billItems.map((item) =>
+        item._id === id ? { ...item, quantity: parseInt(newQuantity) } : item
+      )
+    );
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + (item.unitPrice * item.cartQty), 0);
-  const grandTotal = subtotal - discount;
+  const removeBillItem = (id) => {
+    setBillItems(billItems.filter((item) => item._id !== id));
+  };
 
-  const handleGenerateBill = async () => {
-    if (cart.length === 0) {
-      return toast.error('Cart is empty');
-    }
+  const subTotal = billItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const taxAmount = subTotal * taxRate;
+  const grandTotal = subTotal + taxAmount;
 
+  const handleSaveBill = async () => {
+    if (billItems.length === 0) return;
+    
+    setIsSaving(true);
     try {
-      const payload = {
-        billNumber: `INV-${Math.floor(1000 + Math.random() * 9000)}`,
-        customerName: 'Walk-In Customer',
-        customerEmail: '',
-        customerPhone: '',
-        paymentMethod: 'Cash',
-        discount: Number(discount),
-        tax: 0,
-        items: cart.map(c => ({
-          item: c._id,
-          quantity: c.cartQty,
-          unitPrice: c.unitPrice
-        }))
+      const billData = {
+        customerName,
+        customerPhone,
+        items: billItems.map((item) => ({
+          itemId: item._id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+        })),
+        subTotal,
+        tax: taxAmount,
+        grandTotal,
       };
 
-      const response = await fetch('/api/inventory/bills', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        toast.success('Bill generated successfully');
-        setCart([]);
-        setDiscount(0);
-        fetchItems(); // Refresh stock
-      } else {
-        toast.error(data.message || 'Failed to generate bill');
-      }
+      const { data } = await api.post('/bills', billData);
+      setSavedBill(data);
+      
+      // Clear form
+      setBillItems([]);
+      setCustomerName('');
+      setCustomerPhone('');
     } catch (error) {
-      toast.error('Error generating bill');
+      console.error('Failed to save bill', error);
+      alert('Failed to save bill. Please check stock availability.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const filteredItems = items.filter(item => 
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.sku.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handlePrint = () => {
+    if (printRef.current) {
+      const printContents = printRef.current.innerHTML;
+      const originalContents = document.body.innerHTML;
+      document.body.innerHTML = printContents;
+      window.print();
+      document.body.innerHTML = originalContents;
+      window.location.reload(); // Quick way to restore React state after messing with DOM
+    }
+  };
 
   return (
-    <div className="space-y-6 h-full flex flex-col">
-      <div className="mb-2">
-        <h2 className="text-2xl font-bold text-gray-800">Billing</h2>
-        <p className="text-sm text-gray-500 mt-1">Create new invoice</p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Billing</h1>
+        <p className="mt-1 text-sm text-gray-500">Create new invoice and manage billing</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1">
-        {/* Left Column: Add Items */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col h-full min-h-[600px]">
-          <h3 className="font-bold text-gray-800 mb-4">Add Items</h3>
-          
-          <div className="relative mb-6">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Scan barcode or search item..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all text-sm"
-            />
-          </div>
-
-          <div className="flex-1 overflow-y-auto pr-2 space-y-3">
-            {loading ? (
-              <p className="text-center text-gray-500 py-8">Loading items...</p>
-            ) : filteredItems.length === 0 ? (
-              <p className="text-center text-gray-500 py-8">No items found</p>
-            ) : (
-              filteredItems.map(item => (
-                <div key={item._id} className="flex items-center justify-between p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                      <Package className="w-5 h-5 text-gray-400" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-800 text-sm">{item.name}</p>
-                      <p className="text-xs text-gray-500">Stock: {item.quantity}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="font-semibold text-gray-800">₹{item.unitPrice.toLocaleString()}</span>
-                    <button
-                      onClick={() => addToCart(item)}
-                      disabled={item.quantity <= 0}
-                      className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Left Column - Item Search & Bill Items */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">Add Items</h2>
+            
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <Search className="h-5 w-5 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={handleSearch}
+                className="block w-full rounded-md border border-gray-300 py-2 pl-10 pr-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                placeholder="Search items to add..."
+              />
+              {isSearching && (
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
                 </div>
-              ))
-            )}
-          </div>
-        </div>
+              )}
 
-        {/* Right Column: Current Bill */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col h-full min-h-[600px]">
-          <h3 className="font-bold text-gray-800 mb-4">Current Bill</h3>
-          
-          <div className="flex-1 overflow-y-auto mb-6">
-            <table className="w-full text-left text-sm text-gray-600">
-              <thead className="text-xs font-semibold text-gray-400 border-b border-gray-100">
-                <tr>
-                  <th className="pb-3 pt-2">Item</th>
-                  <th className="pb-3 pt-2">Price</th>
-                  <th className="pb-3 pt-2 text-center">Qty</th>
-                  <th className="pb-3 pt-2 text-right">Total</th>
-                  <th className="pb-3 pt-2 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {cart.length === 0 ? (
+              {/* Search Results Dropdown */}
+              {searchResults.length > 0 && (
+                <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
+                  {searchResults.map((item) => (
+                    <div
+                      key={item._id}
+                      onClick={() => addItemToBill(item)}
+                      className="relative cursor-pointer select-none py-2 pl-3 pr-9 text-gray-900 hover:bg-indigo-50 hover:text-indigo-600"
+                    >
+                      <div className="flex justify-between">
+                        <div>
+                          <span className="block font-medium">{item.name}</span>
+                          <span className="block text-xs text-gray-500">{item.itemId}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="block font-medium">{formatCurrency(item.price)}</span>
+                          <span className="block text-xs text-gray-500">Stock: {item.stock}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">Current Bill</h2>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 text-gray-500">
                   <tr>
-                    <td colSpan="5" className="py-8 text-center text-gray-400">Cart is empty</td>
+                    <th className="px-4 py-3 font-medium">Item</th>
+                    <th className="px-4 py-3 font-medium">Price</th>
+                    <th className="px-4 py-3 font-medium">Qty</th>
+                    <th className="px-4 py-3 font-medium">Total</th>
+                    <th className="px-4 py-3 font-medium"></th>
                   </tr>
-                ) : (
-                  cart.map(item => (
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {billItems.map((item) => (
                     <tr key={item._id}>
-                      <td className="py-3 font-medium text-gray-800">{item.name}</td>
-                      <td className="py-3">₹{item.unitPrice.toLocaleString()}</td>
-                      <td className="py-3 text-center">
+                      <td className="px-4 py-3 font-medium text-gray-900">{item.name}</td>
+                      <td className="px-4 py-3 text-gray-500">{formatCurrency(item.price)}</td>
+                      <td className="px-4 py-3">
                         <input
                           type="number"
                           min="1"
-                          max={item.quantity}
-                          value={item.cartQty}
-                          onChange={(e) => updateCartQty(item._id, e.target.value)}
-                          className="w-16 px-2 py-1 text-center bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500"
+                          max={item.stock}
+                          value={item.quantity}
+                          onChange={(e) => updateQuantity(item._id, e.target.value)}
+                          className="w-16 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         />
                       </td>
-                      <td className="py-3 text-right font-semibold text-gray-800">
-                        ₹{(item.unitPrice * item.cartQty).toLocaleString()}
+                      <td className="px-4 py-3 font-medium text-gray-900">
+                        {formatCurrency(item.price * item.quantity)}
                       </td>
-                      <td className="py-3 text-center">
+                      <td className="px-4 py-3 text-right">
                         <button
-                          onClick={() => removeFromCart(item._id)}
-                          className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
+                          onClick={() => removeBillItem(item._id)}
+                          className="text-red-500 hover:text-red-700"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 size={18} />
                         </button>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="border-t border-gray-100 pt-4 space-y-3">
-            <div className="flex justify-between text-sm font-medium text-gray-600">
-              <span>Subtotal</span>
-              <span>₹{subtotal.toLocaleString()}</span>
+                  ))}
+                  {billItems.length === 0 && (
+                    <tr>
+                      <td colSpan="5" className="px-4 py-8 text-center text-gray-500">
+                        No items added to the bill yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-            <div className="flex justify-between items-center text-sm font-medium text-gray-600">
-              <span>Discount</span>
-              <div className="flex items-center gap-2">
-                <span>₹</span>
+          </div>
+        </div>
+
+        {/* Right Column - Summary & Customer Info */}
+        <div className="space-y-6">
+          <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">Customer Details</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Customer Name</label>
                 <input
-                  type="number"
-                  min="0"
-                  value={discount}
-                  onChange={(e) => setDiscount(Number(e.target.value))}
-                  className="w-20 px-2 py-1 text-right bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500"
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  placeholder="Optional"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Phone Number</label>
+                <input
+                  type="text"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  placeholder="Optional"
                 />
               </div>
             </div>
-            <div className="flex justify-between text-lg font-bold text-gray-800 pt-2 border-t border-gray-100">
-              <span>Grand Total</span>
-              <span>₹{grandTotal.toLocaleString()}</span>
+          </div>
+
+          <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">Order Summary</h2>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between text-gray-500">
+                <span>Subtotal</span>
+                <span className="font-medium text-gray-900">{formatCurrency(subTotal)}</span>
+              </div>
+              <div className="flex justify-between text-gray-500">
+                <span>Tax (18% GST)</span>
+                <span className="font-medium text-gray-900">{formatCurrency(taxAmount)}</span>
+              </div>
+              <div className="my-4 border-t border-gray-200"></div>
+              <div className="flex justify-between text-base font-bold text-gray-900">
+                <span>Grand Total</span>
+                <span>{formatCurrency(grandTotal)}</span>
+              </div>
             </div>
-            
-            <div className="grid grid-cols-2 gap-4 mt-6 pt-4">
+
+            <div className="mt-6 space-y-3">
               <button
-                onClick={() => { setCart([]); setDiscount(0); }}
-                className="py-3 text-gray-600 font-semibold bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors border border-gray-200"
+                onClick={handleSaveBill}
+                disabled={billItems.length === 0 || isSaving}
+                className="flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:bg-indigo-400"
               >
-                Clear Bill
-              </button>
-              <button
-                onClick={handleGenerateBill}
-                disabled={cart.length === 0}
-                className="py-3 bg-[#00D084] hover:bg-[#00B875] text-white font-semibold rounded-xl shadow-md shadow-[#00D084]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={18} />}
                 Generate Bill
               </button>
+              
+              {savedBill && (
+                <button
+                  onClick={handlePrint}
+                  className="flex w-full items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                >
+                  <Printer size={18} />
+                  Print Invoice
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Hidden Printable Area */}
+      {savedBill && (
+        <div style={{ display: 'none' }}>
+          <div ref={printRef}>
+            <PrintableInvoice bill={savedBill} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default Billing;
