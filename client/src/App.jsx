@@ -23,14 +23,15 @@ import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 import { HelpSupport } from './pages/HelpSupport';
 
-import { Items } from './pages/inventory/Items';
-import { Billing } from './pages/inventory/Billing';
-import { InventoryDashboard } from './pages/inventory/InventoryDashboard';
-import { AddItem } from './pages/inventory/AddItem';
-import { SearchItem } from './pages/inventory/SearchItem';
+import Items from './pages/inventory/Items';
+import Billing from './pages/inventory/Billing';
+import InventoryDashboard from './pages/inventory/Dashboard';
+import AddItem from './pages/inventory/AddItem';
+import SearchItem from './pages/inventory/ItemSearch';
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, loading } = useAuth();
+  
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0b1739] flex items-center justify-center text-white font-semibold text-sm">
@@ -38,9 +39,21 @@ const ProtectedRoute = ({ children }) => {
       </div>
     );
   }
+  
   if (!user) {
     return <Navigate to="/login" replace />;
   }
+
+  // If roles are specified and user's role is not included, block access
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    // If they are HOD, they shouldn't see library stuff, redirect to inventory
+    if (user.role === 'HOD') return <Navigate to="/inventory/items" replace />;
+    // If they are Librarian, they shouldn't see inventory, redirect to library
+    if (user.role === 'Librarian') return <Navigate to="/" replace />;
+    // Fallback
+    return <Navigate to="/" replace />;
+  }
+
   return children;
 };
 
@@ -59,7 +72,7 @@ export default function App() {
         <Route
           path="/"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedRoles={['Admin', 'Librarian']}>
               <MainLayout />
             </ProtectedRoute>
           }
@@ -81,7 +94,7 @@ export default function App() {
         <Route
           path="/inventory"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedRoles={['Admin', 'HOD']}>
               <InventoryLayout />
             </ProtectedRoute>
           }

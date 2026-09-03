@@ -66,7 +66,7 @@ export const InventoryLayout = () => {
         {/* Page Content Header */}
         <div className="px-8 pt-8 pb-4 shrink-0">
           <h1 className="text-2xl font-extrabold text-gray-800">{getPageTitle()}</h1>
-          <p className="text-sm text-gray-500 font-medium">Dashboard > {getPageTitle()}</p>
+          <p className="text-sm text-gray-500 font-medium">Dashboard &gt; {getPageTitle()}</p>
         </div>
 
         {/* Main Content Area */}
